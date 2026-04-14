@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import sys
 import surfmap
 from surfmap import __COPYRIGHT_FULL__
 from surfmap.lib.core import surfmap_from_pdb, surfmap_from_matrix
@@ -30,10 +31,15 @@ def surfmap_container(params: Parameters):
     Args:
         params (Parameters): Set of useful parameters.
     """
-    if params.pdbarg:   
+    if params.pdbarg:
         input_args = ['-pdb']
         if params.ppttomap == "electrostatics" and params.pqr:
             input_args.append('-pqr')
+        if params.ppttomap == "electrostatics" and params.electrostatics_mask:
+            if "--electrostatics-mask" in sys.argv[1:]:
+                input_args.append("--electrostatics-mask")
+            else:
+                input_args.append("-emask")
         if params.resfile:
             input_args.append('-res')
     elif params.mat:
