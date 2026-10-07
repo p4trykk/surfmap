@@ -61,6 +61,50 @@ def write_shell_pdb(dshell: dict, outfile: str):
             out_shell.write(line)
 
 
+def project_shell_values(shell: Union[str, Path], property_name: str,
+                         outdir: Union[str, Path] = "."):
+    """Write spherical coordinates and values already stored on shell points.
+
+    The shell PDB B-factor field is treated as the final per-particle value, so
+    no source structure or nearest-atom property assignment is performed.
+    """
+    particles = []
+    with open(shell) as shell_file:
+        for line_number, line in enumerate(shell_file, start=1):
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            try:
+                point = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
+                # Shell files produced outside SURFMAP commonly append the mapped
+                # value as their final whitespace-separated column. Prefer that
+                # representation and fall back to the canonical PDB B-factor field
+                # when an element symbol or another non-numeric field comes last.
+                try:
+                    value = float(line.split()[-1])
+                except ValueError:
+                    value = float(line[60:66].strip())
+            except (IndexError, ValueError):
+                logger.error(f"Could not parse shell coordinates/value on line {line_number} of {shell}.")
+                sys.exit(1)
+            particles.append((point, value))
+
+    if not particles:
+        logger.error("No ATOM/HETATM shell particles could be read from the supplied shell PDB.")
+        sys.exit(1)
+
+    coordinates = [point for point, _ in particles]
+    center = tuple(sum(point[axis] for point in coordinates) / len(coordinates) for axis in range(3))
+    partlist_outfile = Path(outdir) / f"{Path(shell).stem}_{property_name}_partlist.out"
+
+    with open(partlist_outfile, "w") as out:
+        out.write("phi\ttheta\tvalue\tresnb\trestype\tchain\n")
+        for point, value in particles:
+            _, phi, theta = Structure.coord2spherical(center, point)
+            out.write(f"{phi:8f} {theta:8f} {value:3f} 1 POS A\n")
+
+    return str(partlist_outfile)
+
+
 def run_particles_mapping(shell: Union[str, Path], pdb: Union[str, Path], tomap: str, outdir: Union[str, Path] = ".",
                           res: Union[str, Path] = None, electrostatics_mask: Union[str, Path]=None):
     """Assign atom/residue property value to its closest shell particle and compute the spherical coordinates of this particle.

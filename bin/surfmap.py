@@ -3,7 +3,7 @@
 import sys
 import surfmap
 from surfmap import __COPYRIGHT_FULL__
-from surfmap.lib.core import surfmap_from_pdb, surfmap_from_matrix
+from surfmap.lib.core import surfmap_from_pdb, surfmap_from_matrix, surfmap_from_shell
 from surfmap.lib.logs import set_root_logger
 from surfmap.lib.docker import DockerCLI
 from surfmap.lib.parameters import Parameters, get_args
@@ -19,6 +19,8 @@ def surfmap_local(params: Parameters):
         surfmap_from_pdb(params=params)
     elif params.mat:
         surfmap_from_matrix(params=params)
+    elif params.shell:
+        surfmap_from_shell(params=params)
 
 
 def surfmap_container(params: Parameters):
@@ -44,6 +46,8 @@ def surfmap_container(params: Parameters):
             input_args.append('-res')
     elif params.mat:
         input_args = ['-mat']
+    elif params.shell:
+        input_args = ['--shell']
 
 
     cli = DockerCLI(

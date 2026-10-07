@@ -23,6 +23,12 @@ def get_args():
     )
 
     group_mutually_exclusive.add_argument(
+        "--shell",
+        type=str,
+        help="Path to a self-contained shell PDB. Surface-point values are read from the PDB B-factor field and MSMS/property assignment are skipped."
+    )
+
+    group_mutually_exclusive.add_argument(
         "-v", "--version",
         action="store_true",
         help="Print the current version of SURFMAP."
@@ -216,6 +222,7 @@ class Parameters:
     - map_script: str  # path to computeMaps.sh
     - mat: str=None  # path to a given matrix file
     - pdbarg: str = None  # path to a given PDB file
+    - shell: str = None  # optional existing shell PDB used instead of running MSMS
     - pdb_id: str  # PDB stem name (e.g. '1g3n')
     - pdbname: str  # name of PDB file with no path (e.g. '1g3n.pdb')
     - proj: str  # name of the projection type
@@ -265,11 +272,14 @@ class Parameters:
         self.bfactor_min_value = None
         self.bfactor_max_value = None
         self.bfactor_normalize = False
+        self.shell = None
 
         if not args.docker:
             self._check_surfmap_requirements()
         else:
             self._check_docker_install()
+
+        self.shell: str = getattr(args, "shell", None)
 
         # define pdb relative variables
         if args.pdb:
@@ -285,6 +295,17 @@ class Parameters:
             self.pdb_id: str = Path(args.mat).stem
             self.mat: str = args.mat
             self.pdbname: str = Path(self.mat).name
+        elif self.shell:
+            self.pdbarg = None
+            self.mat = None
+            if not Path(self.shell).is_file():
+                print(f"Error: the shell file {self.shell} does not exist.\nExiting now.")
+                exit(1)
+            if Path(self.shell).suffix.lower() != ".pdb":
+                print("Error: --shell expects a shell file with a '.pdb' extension.\nExiting now.")
+                exit(1)
+            self.pdb_id = Path(self.shell).stem
+            self.pdbname = Path(self.shell).name
 
         # set useful paths
         self.curdir: Union[str, Path] = Path.cwd()
@@ -338,6 +359,8 @@ class Parameters:
         # define radius in angström added to usual atomic radius (used for calculation solvent excluded surface)
         self.rad: float = args.rad
         self._check_rad()
+        if self.shell and self.rad != 3.0:
+            print("Warning: -rad is ignored with --shell because the supplied shell geometry is used unchanged.")
 
         # define cellsize of the map
         self.cellsize: int = args.s
@@ -369,10 +392,16 @@ class Parameters:
         self.bfactor_normalize: bool = getattr(args, "bfactor_normalize",
                                                False) if self.ppttomap == "bfactor" else False
         self.flat_bfactor_map: bool = getattr(args, "flat_bfactor_map", False) if self.ppttomap == "bfactor" else False
+        if self.shell and self.ppttomap not in ("bfactor", "electrostatics"):
+            print("Error: --shell supports only '-tomap bfactor' or '-tomap electrostatics'.\nExiting now.")
+            exit(1)
         if getattr(args, "bfactor_normalize", False) and self.ppttomap != "bfactor":
             print("Warning: option --bfactor-normalize is only used with '-tomap bfactor'. The option will be ignored.")
         if getattr(args, "flat_bfactor_map", False) and self.ppttomap != "bfactor":
             print("Warning: option --flat-bfactor-map is only used with '-tomap bfactor'. The option will be ignored.")
+        if self.shell and self.flat_bfactor_map:
+            print("Error: --shell cannot be combined with --flat-bfactor-map because the flat mode does not use a shell.\nExiting now.")
+            exit(1)
 
         self.nosmooth: bool = args.nosmooth
         self.png: bool = args.png
@@ -398,7 +427,7 @@ class Parameters:
         """
         exe_not_found = []
         for requirement in self.REQUIREMENTS:
-            if requirement == "apbs" and self.args.tomap != "electrostatics":
+            if requirement == "apbs" and (self.args.tomap != "electrostatics" or getattr(self.args, "shell", None)):
                 continue
             if not which(requirement):
                 exe_not_found.append(requirement)
@@ -465,6 +494,7 @@ class Parameters:
         rows = [
             "Parameters used to compute the maps:",
             f"- PDB file (-pdb): {self.pdbarg if self.pdbarg else 'None'}",
+            f"- Existing shell PDB (--shell): {self.shell if self.shell else 'None'}",
             f"- Matrix file (-mat): {self.mat if self.mat else 'None'}",
             f"- Projection type (-proj): {self.proj}",
             f"- PQR file: {self.pqr if self.pqr else 'None'}",
