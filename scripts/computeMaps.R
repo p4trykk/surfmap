@@ -259,7 +259,8 @@ for (file in (1:length(files))) {
 
   # Read the current global file.
   data_matrix = read.table(files[file], fill = TRUE, header = TRUE, sep = "\t")
-  data_matrix[is.na(data_matrix)] <- 0
+  # Keep empty matrix cells as NA. Converting them to zero creates artificial
+  # minimum-value pixels (red on b-factor maps), especially with --nosmooth.
   val_matrix = matrix(as.double(data_matrix[,3]),ncol = stepabs, nrow = stepord, byrow=FALSE)
   masked_sentinel = -9999
 
@@ -382,13 +383,15 @@ for (file in (1:length(files))) {
     }
 
     if (opt$bfactor_normalize == TRUE) {
-      bfactor_span <- maxval - minval
-      if (bfactor_span == 0) {
-        cat("Error from computeMaps.R: cannot normalize bfactor values because min and max are identical.\n")
+      # Normalize pixel values to [-1,1] around zero so the color mapping
+      # reflects normalized magnitudes (not only relabeled scale bounds).
+      bfactor_abs_max <- max(abs(c(minval, maxval)))
+      if (bfactor_abs_max == 0) {
+        cat("Error from computeMaps.R: cannot normalize bfactor values because all values are 0.\n")
         quit(status=1)
         stop()
       }
-      val_matrix[proj] <- 2 * ((val_matrix[proj] - minval) / bfactor_span) - 1
+      val_matrix[proj] <- val_matrix[proj] / bfactor_abs_max
       val_matrix[proj] <- pmax(-1, pmin(1, val_matrix[proj]))
       minval <- -1
       maxval <- 1
@@ -399,7 +402,6 @@ for (file in (1:length(files))) {
 
 
     main_scale = "b-factor"
-    main_title = paste0("electrostatic map\n", pdb_id)
     range = abs(minval-maxval)
 
     scale_main = "b-factor"
